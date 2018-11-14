@@ -1,1 +1,189 @@
-https://www.jianshu.com/p/563e171b7dc9
+一．环境
+　　PHP 5.6.30　Ubuntu 16.04 LTS
+
+二．安装protobuf编译器
+　　cd /data/
+　　git clone https://github.com/google/protobuf.git
+
+　　cd protobuf　　
+　　sudo apt-get install autoconf automake libtool curl make g++ unzip
+
+　　./autogen.sh
+　　./configure
+
+　　make
+　　sudo make install
+　　sudo ldconfig # refresh shared library cache.
+  
+   查看protobuf版本
+    protoc --version
+
+
+ 
+
+三．安装php扩展
+　　cd /data/protobuf/php/ext
+　　/usr/local/php/bin/phpize
+　　./configure && make && sudo make install
+　　php.ini文件: extension=protobuf.so
+　　php -m |grep protobuf
+
+
+四．使用protobuf
+
+To use PHP runtime library requires:
+
+    C extension: PHP 5.5, 5.6, or 7.
+    PHP package: PHP 5.5, 5.6 or 7.
+
+
+　　１．协议文件编写
+　　　　/data/protobuf/php/tests/proto/person.proto
+    
+syntax = "proto3";
+package Playwhale;
+ 
+message Person{
+    string name = 1;
+    int32  age  = 2;
+    string email = 3;
+    enum PhoneType{
+        HOME = 0;
+        MOBILE = 1;
+        WORK = 2;
+    }
+    message Phone{
+        int64 id = 1;
+        PhoneType type = 2;
+    }
+    repeated Phone phoneNum = 4;
+}
+ 
+message UserList{
+    string name = 1;
+    repeated Person users = 2;
+}
+
+ 
+　　２．编译协议文件
+　　　　protoc --proto_path=/data/protobuf/php/tests/proto/ --php_out=/data/protobuf/php/tests/pb /data/protobuf/php/tests/proto/person.proto
+
+　　３．测试
+　　　　a．测试文件：　　/data/protobuf/php/tests/meng.php　
+    
+<?php
+/**
+ * Created by PhpStorm.
+ * User: meng
+ * Date: 18-10-17
+ * Time: 下午3:26
+ */
+$start_time = microtime(true);
+$start_mem = memory_get_usage();
+ 
+include 'Autoloader.php';
+use Playwhale\Person;
+ 
+$from = new \Playwhale\Person();
+$from->setName('jack');
+$from->setAge(100);
+$from->setEmail('foo bar, this is a message');
+//phone
+$phones = array();
+$phone_obj = new \Playwhale\Person\Phone();
+$phone_obj->setId(10000);
+$phone_obj->setType(\Playwhale\Person\PhoneType::HOME);
+$phones[] = $phone_obj;
+$phone_obj = new \Playwhale\Person\Phone();
+$phone_obj->setId(30000);
+$phone_obj->setType(\Playwhale\Person\PhoneType::WORK);
+$phones[] = $phone_obj;
+$from->setPhoneNum($phones);
+ 
+//$encode_data = $from->serializeToString();
+$encode_data = $from->serializeToString();
+printf("encode_data=%s\n", $encode_data);
+printf("from: phoneNum=%s\n", json_encode($from->getPhoneNum()));
+file_put_contents('data.bin', $encode_data);
+echo "\n";
+echo "\n";
+ 
+$to = new \Playwhale\Person();
+$to->mergeFromString($encode_data);
+printf("name=%s\n", $to->getName());
+printf("age=%s\n", $to->getAge());
+printf("email=%s\n", $to->getEmail());
+foreach ($to->getPhoneNum() as $tmp_phone_obj) {
+    printf("phone: id=%s, type=%s\n", $tmp_phone_obj->getId(), $tmp_phone_obj->getType());
+}
+echo "\n";
+echo "\n";
+ 
+$end_time = microtime(true);
+$end_mem = memory_get_usage();
+$mem = ($end_mem - $start_mem) / 1024 / 1024;
+printf("\nlast seconds=%ss, lost_mem=%sm ok.\n", $end_time-$start_time, $mem);
+
+ 
+　　　　b．Autoloader.php
+	
+<?php
+class Autoloader
+{
+    /**
+     * Load files by namespace.
+     *
+     * @param string $name
+     * @return boolean
+     */
+    public static function loadByNamespace($name)
+    {
+        $class_path = str_replace('\\', DIRECTORY_SEPARATOR, $name);
+        if (strpos($name, 'Google\\') === 0 || strpos($name, 'GPBMetadata\\') === 0) {
+            $class_file = __DIR__ . '/../src/'. $class_path. '.php';　　　　　　　　　　　　//如果通过php扩展使用protobuf，则这里的处理可以忽略．
+        } elseif (strpos($name, 'Playwhale\\') === 0) {
+            $class_file = __DIR__. '/pb/'. $class_path . '.php';
+        }
+ 
+        if (!is_file($class_file)) {
+            if(strpos($name, 'GPBMetadata\\') === 0)
+                $class_file = __DIR__. '/pb/' . $class_path . '.php';
+        }
+ 
+        if (is_file($class_file)) {
+            include_once($class_file);
+            if (class_exists($name, false)) {
+                return true;
+            }
+        }
+        return false;
+    }
+}
+ 
+spl_autoload_register('Autoloader::loadByNamespace');
+
+ 
+　　　　c．测试
+　　　　　　/usr/local/bin/php -dxdebug.remote_enable=1 -dxdebug.remote_mode=req -dxdebug.remote_port=9000 -dxdebug.remote_host=127.0.0.1 /data/protobuf/php/tests/meng.php
+
+　　　　d．测试结果
+　　　　１)．使用php扩展测试：
+　　　　　　last seconds=0.0017640590667725s, lost_mem=0.069038391113281m ok.
+　　　　　　last seconds=0.0021541118621826s, lost_mem=0.069038391113281m ok.
+　　　　　　last seconds=0.0018389225006104s, lost_mem=0.069038391113281m ok.
+
+　　　　２)．使用php原生语言包测试：
+　　　　　　last seconds=0.059786796569824s, lost_mem=1.9029998779297m ok.
+　　　　　　last seconds=0.10011792182922s, lost_mem=1.9029998779297m ok.
+　　　　　　last seconds=0.060681104660034s, lost_mem=1.9029998779297m ok.
+　　　　　　last seconds=0.058160066604614s, lost_mem=1.9029998779297m ok.
+
+　　　　３)．使用php扩展有更好的性能表现，比另一个使用方法提高２０到３０倍．
+
+ 
+
+五．总结
+　　１．编写protobuf协议文件
+　　2．使用protoc编译协议文件，导出php语言支持的协议文件
+　　３．使用php扩展或php原生包，解释php协议文件
+　　４．推荐使用php扩展解释协议文件，有更好的性能表现．
