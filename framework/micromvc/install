@@ -1,0 +1,27 @@
+github地址：https://github.com/Xeoncross/micromvc
+
+安装步骤：
+
+1. github 下载代码
+
+2.  composer install
+
+    这需要你有composer
+    下载micromvc代码解压，在其目录执行该命令
+
+3. 配置
+
+将config里面的配置文件改成下面的名字
+
+\micromvc-master\Config\config.php
+
+\micromvc-master\Config\route.php
+
+4. 将目录中的sample.htaccess复制到public，并改名.htacess
+
+5. 安装intl扩展
+    xampp windows: php.ini去掉php.intl注释, 重启apache
+
+6. 配置apache，将documentRoot指向\micromvc-master\public目录，而不是\micromvc-master
+
+7. 测试http://127.0.0.1/school
